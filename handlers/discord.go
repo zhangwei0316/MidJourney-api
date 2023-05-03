@@ -20,6 +20,10 @@ const (
 	/**
 	 * 生成图片结束
 	 */
+	Generateing Scene = "Generateing"
+	/**
+	 * 生成图片结束
+	 */
 	GenerateEnd Scene = "GenerateEnd"
 	/**
 	 * 发送的指令midjourney生成过程中发现错误
@@ -41,21 +45,6 @@ func DiscordMsgCreate(s *discord.Session, m *discord.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
-
-	/******** *********/
-	if data, err := json.Marshal(m); err == nil {
-		fmt.Println("discord message: ", string(data))
-	}
-	/******** *********/
-
-	/******** 提示词，首次触发 start ********/
-	// 重新生成不发送
-	// TODO 优化 使用 From
-	if strings.Contains(m.Content, "(Waiting to start)") && !strings.Contains(m.Content, "Rerolling **") {
-		trigger(m.Content, FirstTrigger)
-		return
-	}
-	/******** end ********/
 
 	/******** 图片生成回复 start ********/
 	for _, attachment := range m.Attachments {
@@ -85,6 +74,13 @@ func DiscordMsgUpdate(s *discord.Session, m *discord.MessageUpdate) {
 		trigger(m.Content, GenerateEditError)
 		return
 	}
+
+	for _, attachment := range m.Attachments {
+		if attachment.Width > 0 && attachment.Height > 0 {
+			replaying(m)
+			return
+		}
+	}
 }
 
 type ReqCb struct {
@@ -93,10 +89,24 @@ type ReqCb struct {
 	Type    Scene                  `json:"type"`
 }
 
+type ReqUb struct {
+	Discord *discord.MessageUpdate `json:"discord,omitempty"`
+	Content string                 `json:"content,omitempty"`
+	Type    Scene                  `json:"type"`
+}
+
 func replay(m *discord.MessageCreate) {
 	body := ReqCb{
 		Discord: m,
 		Type:    GenerateEnd,
+	}
+	request(body)
+}
+
+func replaying(m *discord.MessageUpdate) {
+	body := ReqUb{
+		Discord: m,
+		Type:    Generateing,
 	}
 	request(body)
 }
@@ -116,12 +126,9 @@ func request(params interface{}) {
 		return
 	}
 	dataStr := string(data)
-	if !strings.Contains(dataStr, "GenerateEnd") {
-		return
-	}
 	fmt.Println("调用回调接口，请求参数：", dataStr)
 
-	req, err := http.NewRequest("POST", initialization.GetConfig().CB_URL, strings.NewReader(string(data)))
+	req, err := http.NewRequest("POST", initialization.GetConfig().CB_URL, strings.NewReader(dataStr))
 	if err != nil {
 		fmt.Println("http request error: ", err)
 		return

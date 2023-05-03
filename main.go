@@ -18,8 +18,6 @@ func main() {
 
 	r := gin.Default()
 
-	r.Use(handlers.CorsHandler())
-
 	r.POST("/v1/trigger/midjourney-bot", handlers.MidjourneyBot)
 
 	r.Run(":16007")
